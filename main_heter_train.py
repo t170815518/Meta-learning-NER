@@ -1,28 +1,16 @@
-
-
 # for command line
-import sys
-import os
-curPath = os.path.abspath(os.path.dirname(__file__))
-rootPath = os.path.split(curPath)[0]
-sys.path.append(rootPath)
-
-import torch
-
-import random
-import numpy as np
-from torch.backends import cudnn
 
 import argparse
+import random
 
-
-
+import numpy as np
+import torch
+from torch.backends import cudnn
 
 
 def str2bool(v):
-  #susendberg's function
-  return v.lower() in ("yes", "true", "t", "1")
-
+    # susendberg's function
+    return v.lower() in ("yes", "true", "t", "1")
 
 
 def update_params_from_args():
@@ -31,10 +19,9 @@ def update_params_from_args():
     parser.register('type', 'bool', str2bool)
     parser.add_argument('--variant', type=str, default=r'our')
     parser.add_argument('--foldpath', type=str, default=r'/MetaNER/input/heter_exp')
-    parser.add_argument('--save_path', type=str,default=r'/MetaNER/output/heter_single')
+    parser.add_argument('--save_path', type=str, default=r'/MetaNER/output/heter_single')
     parser.add_argument('--no_train_domain', type=int, default=1)
-    parser.add_argument('--single_domain', type=str, default='mitmovieeng') #bionlp13pc  re3d mitrestaurant sec
-
+    parser.add_argument('--single_domain', type=str, default='mitmovieeng')  # bionlp13pc  re3d mitrestaurant sec
 
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--cudnn', type=bool, default=True)
@@ -61,24 +48,19 @@ def update_params_from_args():
     parser.add_argument('--theta_update', type=str, default=r'all')
     parser.add_argument('--lr_decay', type=bool, default=True)
 
-
-
     args = parser.parse_args()
-
 
     # for homo, the embeddings are same
     if args.single_domain == 'combine':
         args.init_embeddings_path = r'/MetaNER/input/heter_exp/combine/save_initializaton_embeddings.pickle'
     else:
-        args.init_embeddings_path = r'/MetaNER/input/heter_exp/save_initializaton_embeddings.pickle'
+        args.init_embeddings_path = 'pre_trained_embedding.npy'
 
     return args
 
 
-
 if __name__ == '__main__':
-    #CUDA_VISIBLE_DEVICES = "6"
-
+    # CUDA_VISIBLE_DEVICES = "6"
     seed_num = 50
     random.seed(seed_num)
     torch.manual_seed(seed_num)
@@ -88,20 +70,14 @@ if __name__ == '__main__':
 
     cudnn.enabled = params.cudnn
 
-    if params.variant =='our':
-        from solver_meta_ner_heter_our import MetaNERHeter_baseline, MetaNERHeter
+    if params.variant == 'our':
+        from solver_meta_ner_heter_our import MetaNERHeter_baseline, MetaNER_Heterogeneous_Solver
     if params.variant == 'maml':
         pass
 
-
-
-
     if params.task == 'base':
-
-        solver_obj = MetaNERHeter_baseline(params,DEVICE)
+        solver_obj = MetaNERHeter_baseline(params, DEVICE)
         solver_obj.train()
-
     elif params.task == 'notbase':
-
-        solver_obj = MetaNERHeter(params, DEVICE)
+        solver_obj = MetaNER_Heterogeneous_Solver(params, DEVICE)
         solver_obj.train()

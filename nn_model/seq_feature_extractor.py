@@ -3,7 +3,7 @@ import torch
 import torch.autograd as autograd
 import torch.nn as nn
 import torch.nn.functional as F
-from nn_model.wordrep import WordRep
+from nn_model.wordrepresenter import WordRepresenter
 import torch.nn.utils.rnn as R
 
 class SeqFeatureExtractor(nn.Module):
@@ -28,7 +28,7 @@ class SeqFeatureExtractor(nn.Module):
                                                        batch_first=True)
         self.device = DEVICE
 
-        self.wordrep = WordRep(params, DEVICE)
+        self.wordrep = WordRepresenter(params, DEVICE)
 
         ignored_params = list(map(id, self.wordrep.word_embed.parameters()))
         self.base_params = filter(lambda p: id(p) not in ignored_params, self.parameters())

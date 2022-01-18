@@ -18,14 +18,33 @@ def preprocess_word2vec(emb_path):
     ref:
         - https://stackoverflow.com/a/49389628/11180198
     """
-    glove_words = np.loadtxt(emb_path, dtype='str')
-    words = glove_words[:, 0]
-    vectors = glove_words[:, 1:].astype('float')
-    np.save("word_vectors.npy", vectors)
+    word2id = {}
+    id2word = {}
+    word_id = 0
+    vectors = []
 
-    with open('word_list.pkl', 'wb+') as f:
-        words = words.tolist()
-        pickle.dump(words, f)
+    with open(emb_path, 'rb') as f:
+        line = f.readline()
+        while line:
+            fields = line.strip().split()
+            word = fields[0].decode('utf-8')
+            vector = fields[1:]
+            word2id[word] = word_id
+            id2word[word_id] = word
+            vectors.append(vector)
+            word_id += 1
+
+            if word_id % 1000 == 0:
+                print("{} words are processed".format(word_id))
+
+            line = f.readline()
+
+    matrix = np.array(vectors)
+    np.save("pre_trained_embedding.npy", matrix)
+    with open("word2id.pkl", "wb+") as f:
+        pickle.dump(word2id, f)
+    with open("id2word.pkl", "wb+") as f:
+        pickle.dump(id2word, f)
 
 
 if __name__ == '__main__':
