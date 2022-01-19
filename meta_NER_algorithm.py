@@ -363,7 +363,8 @@ class Meta_NER_Evaluator:
     """
 
     def __init__(self, test_domain: Dataset, word_size, word_emb_dim, alphabet_size, char_emb_dim, hidden_size,
-                 device: torch.device, batch_size, is_fine_tune: bool, epoch_num: int, eval_interval: int):
+                 device: torch.device, batch_size, is_fine_tune: bool, epoch_num: int, eval_interval: int,
+                 encoder_param_path: str):
         """
         :param test_domain:
         """
@@ -372,7 +373,8 @@ class Meta_NER_Evaluator:
         self.encoder = CNN_BiGRU(word_size, word_emb_dim, alphabet_size, char_emb_dim, hidden_size,
                                  word_pad_idx=word_size, char_pad_idx=alphabet_size, is_freeze=False, cnn_total_num=100,
                                  dropout=0.2, pretrained_path="pre_trained.pt").to(device)
-        self.decoder = DomainCRF(hidden_size*2, test_domain.tag_num)
+        self.encoder.load_state_dict(torch.load(encoder_param_path))
+        self.decoder = DomainCRF(hidden_size*2, test_domain.tag_num).to(device)
         self.device = device
         self.batch_size: int = batch_size
         self.is_fine_tune = is_fine_tune
@@ -392,10 +394,12 @@ class Meta_NER_Evaluator:
         best_f1 = 0
 
         for i in range(self.epoch_num):
-            self.encoder.train()
-            self.decoder.train()
+            logging.info("=======Epoch {}=======".format(i))
 
-            for (word_seq, char_seq), true_tags, domain_tag in self.test_domain.iter_train():
+            for (word_seq, char_seq), true_tags, domain_tag in self.test_domain.iter_train(self.batch_size):
+                self.encoder.train()
+                self.decoder.train()
+
                 encoder_features, _ = self.encoder(word_seq, char_seq)
                 pred_loss = -self.decoder.loss(encoder_features, true_tags)
 

@@ -18,16 +18,21 @@ class Dataset:
     """The data wrapper. One dataset class per domain."""
     domain2id = {}
     id2domain = {}
+    total_train_sample_size = 0
+    # used for char-level features
     char2id = {}
     id2char = {}
     encountered_chars = set()
-    total_train_sample_size = 0
 
-    def __init__(self, domain_name: str, word2id: {}, id2word: {}, device):
+    def __init__(self, domain_name: str, word2id: {}, id2word: {}, device, char2id: {} = None):
         self.device = device
         self.id2word = id2word
         self.word2id = word2id
         self.name: str = domain_name
+        if char2id:
+            Dataset.char2id = char2id
+            Dataset.id2char = {index: char for char, index in char2id.items()}
+            Dataset.encountered_chars = set(char2id.keys())
 
         self.id2tag = {}
         self.tag2id = {}
@@ -86,7 +91,7 @@ class Dataset:
             [[[WORD_ID_SEQ], [CHAR_SEQ],[TAG_SEQUENCE]], [[WORD_ID_SEQ], [CHAR_SEQ],[TAG_SEQUENCE]], ...]
         get the id2tag and tag2id
         """
-        if self.name in ["conll2003", "wnut17", "wikigold", "ontonotes"]:
+        if self.name in ["conll2003", "wnut17", "wikigold", "ontonotes", "bio_nlp_13_pc"]:
             train_path = os.path.join("data", self.name, "train.txt")
             test_path = os.path.join("data", self.name, "test.txt")
             valid_path = os.path.join("data", self.name, "valid.txt")
@@ -159,3 +164,12 @@ class Dataset:
                 logging.info("the data is cached to {}".format(cache_path))
 
         return data
+
+    def iter_train(self, batch_size):
+        random.shuffle(self.train)
+
+        for start_id in range(0, len(self.train), batch_size):
+            end_id = min(len(self.train), start_id + batch_size)
+            selected_data = self.train[start_id: end_id]
+            (word_seq, char_seq), true_tags, domain_tag = self.process_data(selected_data)
+            yield (word_seq, char_seq), true_tags, domain_tag
