@@ -116,7 +116,8 @@ class Dataset:
                 for line in f:
                     line = line.strip().split()
                     if len(line) < 1:  # line-break
-                        data.append([word_seq, char_seq, tag_seq])
+                        if word_seq != []:  # to avoid empty samples
+                            data.append([word_seq, char_seq, tag_seq])
                         word_seq = []
                         tag_seq = []
                         char_seq = []
