@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as functional
 from torch.nn.init import xavier_uniform_
+from torchcrf import CRF
 
 
 class CNN_BiGRU(nn.Module):
@@ -18,8 +19,9 @@ class CNN_BiGRU(nn.Module):
         Conference(WWW). Taipei, Taiwan. (Special thanks to Dr. Li Jing for providing source codes)
     """
 
-    def __init__(self, word_size: int, word_emb_dim, alphabet_size, char_emb_dim, hidden_size, layer_num, word_pad_idx,
-                 char_pad_idx, is_freeze: bool, cnn_total_num: int, dropout: float, pretrained_path: str = None):
+    def __init__(self, word_size: int, word_emb_dim, alphabet_size, char_emb_dim, hidden_size, word_pad_idx,
+                 char_pad_idx, is_freeze: bool, cnn_total_num: int, dropout: float,pretrained_path: str = None,
+                 layer_num: int = 1):
         """
         :param word_size: int, the size of unique word in the corpus (e.g. GloVe corpus)
         :param word_emb_dim: int, the size of embedding for word vector
@@ -38,10 +40,10 @@ class CNN_BiGRU(nn.Module):
         super(CNN_BiGRU, self).__init__()
 
         # 1. for character-level feature
-        self.char_embedding = nn.Embedding(alphabet_size, char_emb_dim, padding_idx=char_pad_idx)
+        self.char_embedding = nn.Embedding(alphabet_size+1, char_emb_dim, padding_idx=char_pad_idx)
         xavier_uniform_(self.char_embedding.weight)
         #   various sizes of CNN filters
-        cnn_num = cnn_total_num / 4
+        cnn_num = int(cnn_total_num / 4)
         self.conv1 = nn.Conv2d(1, cnn_num, (2, char_emb_dim))
         self.conv2 = nn.Conv2d(1, cnn_num, (3, char_emb_dim))
         self.conv3 = nn.Conv2d(1, cnn_num, (4, char_emb_dim))
@@ -55,9 +57,10 @@ class CNN_BiGRU(nn.Module):
             self.word_embedding = nn.Embedding(word_size, word_emb_dim, padding_idx=word_pad_idx)
             xavier_uniform_(self.word_embedding.weight)
         else:
-            emb_arr = np.fromfile(pretrained_path)
-            emb_arr = torch.Tensor(emb_arr)
-            self.word_embedding = nn.Embedding.from_pretrained(emb_arr, is_freeze, padding_idx=word_pad_idx)
+            emb_arr = torch.load(pretrained_path)
+            appended_emb_arr = torch.zeros([emb_arr.shape[0] + 1, emb_arr.shape[1]])
+            appended_emb_arr[:-1, :] = emb_arr
+            self.word_embedding = nn.Embedding.from_pretrained(appended_emb_arr, is_freeze, padding_idx=word_pad_idx)
 
         # 3. BiGRU
         self.rnn_layer = nn.GRU(input_size=char_emb_dim + word_emb_dim, hidden_size=hidden_size, num_layers=layer_num,
@@ -121,11 +124,17 @@ class MLP_DomainDiscriminator(nn.Module):
     MLP-based network as the domain discriminator
     """
 
-    def __init__(self, feature_dim):
+    def __init__(self, feature_dim: int, domain_num: int):
         super(MLP_DomainDiscriminator, self).__init__()
         self.attention = torch.zeros((feature_dim, 1), requires_grad=True)
+        self.linear = nn.Linear(feature_dim, domain_num)
+
+        self.constant = -1  # the constant multiplied to gradient during gradient reverse operation
         # initialize weights
         xavier_uniform_(self.attention)
+
+        # loss
+        self.loss_func = nn.NLLLoss()
 
     def forward(self, feature):
         x = feature * 1
@@ -136,5 +145,23 @@ class MLP_DomainDiscriminator(nn.Module):
         attention_score = functional.softmax(attention_score).view(x.size(0), x.size(1), 1)
         scored_x = x * attention_score  # [20,40,256]  [20,40,1]   --> [20,40,256]
         condensed_x = torch.sum(scored_x, dim=1)  # [20,256]
-        domain_output = functional.log_softmax(self.fc_layer(condensed_x), 1)
+        domain_output = functional.log_softmax(self.linear(condensed_x), 1)
         return domain_output
+
+    def loss(self, feature, true_tag):
+        x = self.forward(feature)
+        l = self.loss_func(x, true_tag)
+        return l
+
+class DomainCRF(nn.Module):
+    def __init__(self, feature_dim: int, tag_num):
+        super(DomainCRF, self).__init__()
+
+        self.linear = nn.Linear(feature_dim, tag_num)
+        self.crf = CRF(tag_num, batch_first=True)
+
+    def loss(self, encoded_features, true_tags):
+        x = self.linear(encoded_features)
+        real_entries_mask = true_tags != -1  # to mask out the padding entries
+        x = self.crf(x, true_tags, mask=real_entries_mask)
+        return x
