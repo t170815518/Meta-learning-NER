@@ -13,7 +13,7 @@ parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--epoch_num', type=int, default=70)
 parser.add_argument('--inner_lr', type=float, default=1e-4)
 parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--eval_interval', type=int, default=3)
+parser.add_argument('--eval_interval', type=int, default=60)
 args = parser.parse_args()
 
 # set random seed
@@ -42,5 +42,5 @@ for domain_name in TRAIN_DOMAIN_NAMES:
 trainer = Meta_NER_Trainer(batch_size=args.batch_size, epoch_num=args.epoch_num, train_domains=train_domains,
                            inner_lr=args.inner_lr, lr=args.lr, word_emb_lr=args.inner_lr, weight_decay=None,
                            eval_interval=args.eval_interval, alphabet_size=ALPHABET_SIZE,
-                           word_size=CORPUS_SIZE)
+                           total_train_size=Dataset.total_train_sample_size, word_size=CORPUS_SIZE)
 trainer.train()

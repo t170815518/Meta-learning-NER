@@ -14,8 +14,12 @@ MODEL_SAVE_PATH = "optimial_encoder.pt"
 class Meta_NER_Trainer:
     """
     The wrapper class of solving Domain-adaptation NER with Meta-NER.
-    The entry method is train().
     Note there is some bug that only supports 1 valid domain
+    To use the class, simply call:
+        ```python
+        trainer = Meta_NER_Trainer(...)
+        trainer.train()
+        ```
     """
 
     def __init__(self, batch_size: int, epoch_num: int, train_domains, inner_lr: float, lr: float, word_emb_lr: float,
@@ -150,13 +154,13 @@ class Meta_NER_Trainer:
             if i % self.eval_interval == 0:
                 pred_loss, f1 = self.evaluate(meta_train_domains)
                 print("[meta_train] pred_loss={};f1={}".format(pred_loss, f1))
-                if f1_score > best_train_f1:
-                    best_train_f1 = f1_score
+                if f1 > best_train_f1:
+                    best_train_f1 = f1
 
-                performance_str, f1 = self.evaluate([meta_val_domain])
+                performance_str, f1 = self.evaluate(meta_val_domain)
                 print("[meta_test] pred_loss={};f1={}".format(pred_loss, f1))
-                if f1_score > best_dev_f1:
-                    best_dev_f1 = f1_score
+                if f1 > best_dev_f1:
+                    best_dev_f1 = f1
                     torch.save(self.encoder.state_dict(), MODEL_SAVE_PATH)
                     print("best f1 found (), model is saved to {}".format(best_dev_f1, MODEL_SAVE_PATH))
 

@@ -3,9 +3,11 @@ import pickle
 from random import shuffle
 
 import numpy as np
+import torch
+
 
 BUFFER_SIZE = 10000000
-
+PROCESSED_WORD2VEC_TENSOR_PATH = "pre_trained.pt"
 
 def preprocess_word2vec(emb_path):
     """
@@ -36,8 +38,11 @@ def preprocess_word2vec(emb_path):
 
             line = f.readline()
 
-    matrix = np.array(vectors)
-    np.save("pre_trained_embedding.npy", matrix)
+    matrix = np.array(vectors).astype(float)
+    print(matrix.shape)
+    tensor = torch.Tensor(matrix)
+    torch.save(tensor, PROCESSED_WORD2VEC_TENSOR_PATH)
+    print("matrix is saved to {}".format(PROCESSED_WORD2VEC_TENSOR_PATH))
     with open("word2id.pkl", "wb+") as f:
         pickle.dump(word2id, f)
     with open("id2word.pkl", "wb+") as f:
@@ -85,5 +90,5 @@ def split_dataset(directory, file_path):
 
 
 if __name__ == '__main__':
-    # preprocess_word2vec("glove.6B.300d.txt")
-    split_dataset("data/wikigold", "data/wikigold/wikigold.conll.txt")
+    preprocess_word2vec("glove.6B.300d.txt")
+    # split_dataset("data/wikigold", "data/wikigold/wikigold.conll.txt")

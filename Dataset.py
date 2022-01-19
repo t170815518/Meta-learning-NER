@@ -20,6 +20,7 @@ class Dataset:
     char2id = {}
     id2char = {}
     encountered_chars = set()
+    total_train_sample_size = 0
 
     def __init__(self, domain_name: str, word2id: {}, id2word: {}, device):
         self.device = device
@@ -67,7 +68,7 @@ class Dataset:
         tag_seq = [torch.LongTensor(x[2]) for x in data_batch]
         tag_seq = pad_sequence(tag_seq, batch_first=True, padding_value=-1)
 
-        domain_tag = torch.Tensor([Dataset.domain2id[self.name]] * len(data_batch))
+        domain_tag = torch.LongTensor([Dataset.domain2id[self.name]] * len(data_batch))
         # send to cuda
         word_seq.to(self.device)
         padded_char_seq.to(self.device)
@@ -89,7 +90,9 @@ class Dataset:
             self.train = self.__read_file(train_path)
             self.test = self.__read_file(test_path)
             self.valid = self.__read_file(valid_path)
+            # update class attributes
             self.tag_num = len(set([tag for sentence in self.train for tag in sentence[2]]))
+            Dataset.total_train_sample_size += len(self.train)
         else:
             raise ValueError("{}: unsupported dataset".format(self.name))
 

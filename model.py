@@ -2,7 +2,6 @@
 CNN_BiGRU, low-coupling module implementation
 """
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
@@ -20,7 +19,7 @@ class CNN_BiGRU(nn.Module):
     """
 
     def __init__(self, word_size: int, word_emb_dim, alphabet_size, char_emb_dim, hidden_size, word_pad_idx,
-                 char_pad_idx, is_freeze: bool, cnn_total_num: int, dropout: float,pretrained_path: str = None,
+                 char_pad_idx, is_freeze: bool, cnn_total_num: int, dropout: float, pretrained_path: str = None,
                  layer_num: int = 1):
         """
         :param word_size: int, the size of unique word in the corpus (e.g. GloVe corpus)
@@ -40,7 +39,7 @@ class CNN_BiGRU(nn.Module):
         super(CNN_BiGRU, self).__init__()
 
         # 1. for character-level feature
-        self.char_embedding = nn.Embedding(alphabet_size+1, char_emb_dim, padding_idx=char_pad_idx)
+        self.char_embedding = nn.Embedding(alphabet_size + 1, char_emb_dim, padding_idx=char_pad_idx)
         xavier_uniform_(self.char_embedding.weight)
         #   various sizes of CNN filters
         cnn_num = int(cnn_total_num / 4)
@@ -153,6 +152,7 @@ class MLP_DomainDiscriminator(nn.Module):
         l = self.loss_func(x, true_tag)
         return l
 
+
 class DomainCRF(nn.Module):
     def __init__(self, feature_dim: int, tag_num):
         super(DomainCRF, self).__init__()
@@ -165,3 +165,8 @@ class DomainCRF(nn.Module):
         real_entries_mask = true_tags != -1  # to mask out the padding entries
         x = self.crf(x, true_tags, mask=real_entries_mask)
         return x
+
+    def decode(self, encoded_features, mask):
+        x = self.linear(encoded_features)
+        tag = self.crf.decode(x, mask=mask)
+        return tag
