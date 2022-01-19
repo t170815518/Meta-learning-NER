@@ -144,7 +144,7 @@ class Dataset:
                             if char not in Dataset.encountered_chars:
                                 new_id = len(Dataset.char2id)
                                 Dataset.char2id[char] = new_id
-                                Dataset.id2char[id] = char
+                                Dataset.id2char[new_id] = char
                                 Dataset.encountered_chars.add(char)
                             chars.append(self.char2id[char])
 

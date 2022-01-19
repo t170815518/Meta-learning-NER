@@ -202,7 +202,7 @@ class Meta_NER_Trainer:
             self.discriminator_optimizer.step()
 
             # check-point
-            if i % self.eval_interval == 0:
+            if i % self.eval_interval == 0 and i != 0:
                 pred_loss, f1 = self.evaluate(meta_train_domains)
                 logging.info("[meta_train] pred_loss={};f1={}".format(pred_loss, f1))
                 if f1 > best_train_f1:

@@ -1,6 +1,7 @@
 import os
 import pickle
 from random import shuffle
+from typing import List
 
 import numpy as np
 import torch
@@ -8,6 +9,7 @@ import torch
 
 BUFFER_SIZE = 10000000
 PROCESSED_WORD2VEC_TENSOR_PATH = "pre_trained.pt"
+
 
 def preprocess_word2vec(emb_path):
     """
@@ -62,6 +64,14 @@ def split_dataset(directory, file_path):
                 if len(line) == 2:
                     word, tag = line
                 sentence.append([word, tag])
+    # convert the tag to IOB2
+    for i in range(len(sentences)):
+        sentence = sentences[i]
+        words = [x[0] for x in sentence]
+        tags = [x[1] for x in sentence]
+        iob2(tags)
+        sentences[i] = [[x, y] for x, y in zip(words, tags)]
+
     shuffle(sentences)
     train_size = int(len(sentences) * 0.6)
     test_size = int(len(sentences) * 0.2)
@@ -89,6 +99,29 @@ def split_dataset(directory, file_path):
             f.write('\n')
 
 
+def iob2(tags: List[str]):
+    """
+    Ref: https://gist.github.com/allanj/b9bd448dc9b70d71eb7c2b6dd33fe4ef
+    Check that tags have a valid IOB format.
+    Tags in IOB1 format are converted to IOB2.
+    """
+    for i, tag in enumerate(tags):
+        if tag == 'O':
+            continue
+        split = tag.split('-')
+        if len(split) != 2 or split[0] not in ['I', 'B']:
+            return False
+        if split[0] == 'B':
+            continue
+        elif i == 0 or tags[i - 1] == 'O':  # conversion IOB1 to IOB2
+            tags[i] = 'B' + tag[1:]
+        elif tags[i - 1][1:] == tag[1:]:
+            continue
+        else:  # conversion IOB1 to IOB2
+            tags[i] = 'B' + tag[1:]
+    return True
+
+
 if __name__ == '__main__':
-    preprocess_word2vec("glove.6B.300d.txt")
-    # split_dataset("data/wikigold", "data/wikigold/wikigold.conll.txt")
+    # preprocess_word2vec("glove.6B.300d.txt")
+    split_dataset("data/wikigold", "data/wikigold/wikigold_iob.txt")

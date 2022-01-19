@@ -3,6 +3,7 @@ CNN_BiGRU, low-coupling module implementation
 """
 
 import torch
+import logging
 import torch.nn as nn
 import torch.nn.functional as functional
 from torch.nn.init import xavier_uniform_
@@ -118,6 +119,12 @@ class CNN_BiGRU(nn.Module):
         return Y
 
 
+def reverse_gradient(grad):
+    new_grad = grad * -1
+    logging.info("grad is reversed.")
+    return new_grad
+
+
 class MLP_DomainDiscriminator(nn.Module):
     """
     MLP-based network as the domain discriminator
@@ -138,7 +145,7 @@ class MLP_DomainDiscriminator(nn.Module):
     def forward(self, feature):
         x = feature * 1
         # backward hook, called during back-propagation to reverse gradient
-        x.register_hook(lambda grad: grad * self.constant)
+        x.register_hook(reverse_gradient)
 
         attention_score = torch.matmul(x, self.attention).squeeze()
         attention_score = functional.softmax(attention_score).view(x.size(0), x.size(1), 1)
