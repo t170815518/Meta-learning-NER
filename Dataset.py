@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
+import logging
 import os
 import pathlib
 import pickle
@@ -106,11 +107,11 @@ class Dataset:
         is_cached = False
 
         if is_cached:
-            print("Loading {}".format(cache_path))
+            logging.info("Loading {}".format(cache_path))
             with open(cache_path, 'rb') as f:
                 data = pickle.load(f)
         else:
-            print("Loading {}".format(file_path))
+            logging.info("Loading {}".format(file_path))
             with open(file_path, 'r') as f:  # encoding='utf-8-sig' for wnut17
                 for line in f:
                     line = line.strip().split()
@@ -152,6 +153,6 @@ class Dataset:
                         char_seq.append(chars)
             with open(cache_path, 'wb+') as f:
                 pickle.dump(data, f)
-                print("the data is cached to {}".format(cache_path))
+                logging.info("the data is cached to {}".format(cache_path))
 
         return data

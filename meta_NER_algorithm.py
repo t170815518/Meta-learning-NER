@@ -1,3 +1,4 @@
+import logging
 import random
 from collections import OrderedDict
 
@@ -128,7 +129,7 @@ class Meta_NER_Trainer:
             # calculate the epoch and iteration id
             current_epoch = int(i / iteration_per_epoch)
             current_iteration = int(i % iteration_per_epoch)
-            print("epoch:%d/%d,iteration:%d/%d" %
+            logging.info("epoch:%d/%d,iteration:%d/%d" %
                   (current_epoch, self.epoch_num, current_iteration, iteration_per_epoch))
 
             # get meta-train and meta-val sets from train datasets, to simulate the domain shift from meta-train to
@@ -136,7 +137,7 @@ class Meta_NER_Trainer:
             random.shuffle(self.train_domains)
             meta_train_domains = self.train_domains[:-1]
             meta_val_domain = [self.train_domains[-1]]
-            print("meta-train domains={}; meta-val domains={}".format([x.name for x in meta_train_domains],
+            logging.info("meta-train domains={}; meta-val domains={}".format([x.name for x in meta_train_domains],
                                                                       [x.name for x in meta_val_domain]))
 
             # clear the grad at the start of iter
@@ -203,16 +204,16 @@ class Meta_NER_Trainer:
             # check-point
             if i % self.eval_interval == 0:
                 pred_loss, f1 = self.evaluate(meta_train_domains)
-                print("[meta_train] pred_loss={};f1={}".format(pred_loss, f1))
+                logging.info("[meta_train] pred_loss={};f1={}".format(pred_loss, f1))
                 if f1 > best_train_f1:
                     best_train_f1 = f1
 
                 pred_loss, f1 = self.evaluate(meta_val_domain)
-                print("[meta_test] pred_loss={};f1={}".format(pred_loss, f1))
+                logging.info("[meta_test] pred_loss={};f1={}".format(pred_loss, f1))
                 if f1 > best_dev_f1:
                     best_dev_f1 = f1
                     torch.save(self.encoder.state_dict(), MODEL_SAVE_PATH)
-                    print("best f1 found (), model is saved to {}".format(best_dev_f1, MODEL_SAVE_PATH))
+                    logging.info("best f1 found (), model is saved to {}".format(best_dev_f1, MODEL_SAVE_PATH))
 
             if self.is_lr_decay and (current_epoch > lr_decay_epoch_id):
                 self.encoder_scheduler.step()
@@ -314,7 +315,7 @@ class Meta_NER_Trainer:
             prediction = []
 
             for domain in domains:
-                print("Evaluating valid set of {}".format(domain.name))
+                logging.info("Evaluating valid set of {}".format(domain.name))
 
                 for start_id in range(0, len(domain.valid), self.batch_size):
                     end_id = min(start_id + self.batch_size, len(domain.valid))

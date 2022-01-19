@@ -4,10 +4,12 @@ Entry script
 
 
 import argparse
+import logging
 import pickle
 import random
 import numpy as np
 import torch
+import datetime
 
 from Dataset import Dataset
 from meta_NER_algorithm import Meta_NER_Trainer
@@ -40,6 +42,10 @@ random.seed(args.random_seed)
 torch.manual_seed(args.random_seed)
 np.random.seed(args.random_seed)
 
+# setup logger fixme: also add the stdout
+logging.basicConfig(filename='train_log_{}.log'.format(datetime.datetime.now()), level=logging.INFO)
+
+
 word2id = None
 id2word = None
 with open("word2id.pkl", "rb") as f:  # the files should be pre-processed
@@ -52,7 +58,6 @@ for domain_name in TRAIN_DOMAIN_NAMES:
     dataset = Dataset(domain_name, word2id, id2word, DEVICE)
     train_domains.append(dataset)
 
-# todo: fix the word_embedding lr
 trainer = Meta_NER_Trainer(batch_size=args.batch_size, train_domains=train_domains, device=DEVICE,
                            word_size=CORPUS_SIZE, word_emb_dim=args.word_emb_dim, alphabet_size=ALPHABET_SIZE,
                            char_emb_dim=args.char_emb_dim, lr=args.lr, word_emb_lr=args.word_emb_lr,
