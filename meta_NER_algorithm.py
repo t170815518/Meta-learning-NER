@@ -4,11 +4,12 @@ from collections import OrderedDict
 import torch
 from sklearn.metrics import f1_score
 from torch import optim
+from torch.optim.lr_scheduler import StepLR
 
 from model import CNN_BiGRU, MLP_DomainDiscriminator, DomainCRF
 
 
-MODEL_SAVE_PATH = "optimial_encoder.pt"
+MODEL_SAVE_PATH = "optimal_encoder.pt"
 
 
 class Meta_NER_Trainer:
@@ -20,11 +21,34 @@ class Meta_NER_Trainer:
         trainer = Meta_NER_Trainer(...)
         trainer.train()
         ```
+
+    Important attribute:
+        - self.encoder: CNN-BiGRU
     """
 
-    def __init__(self, batch_size: int, epoch_num: int, train_domains, inner_lr: float, lr: float, word_emb_lr: float,
-                 weight_decay: float, eval_interval: int, alphabet_size: int, word_size, total_train_size: int,
-                 char_emb_dim: int = 100, hidden_size: int = 128, word_emb_dim: int = 300):
+    def __init__(self, batch_size: int, train_domains: [], device: torch.device, word_size: int, word_emb_dim: int,
+                 alphabet_size: int, char_emb_dim: int, hidden_size: int, lr: float, word_emb_lr: float,
+                 weight_decay: float, is_lr_decay: bool, total_train_size: int, epoch_num: int, inner_lr: float,
+                 eval_interval: int):
+        """
+
+        :param batch_size: int
+        :param train_domains:
+        :param device:
+        :param word_size:
+        :param word_emb_dim:
+        :param alphabet_size:
+        :param char_emb_dim:
+        :param hidden_size:
+        :param lr: float
+        :param word_emb_lr:
+        :param weight_decay:
+        :param is_lr_decay:
+        :param total_train_size:
+        :param epoch_num:
+        :param inner_lr: float, the rate in meta-train process (alpha in the formula)
+        :param eval_interval:
+        """
         assert batch_size > 0
         assert epoch_num > 0
         assert inner_lr > 0.0
@@ -33,6 +57,11 @@ class Meta_NER_Trainer:
         assert word_emb_lr > 0
         assert alphabet_size > 0
         assert total_train_size > 0
+        assert word_size > 0
+        assert word_emb_dim > 0
+        assert char_emb_dim > 0
+        assert hidden_size > 0
+        assert weight_decay > 0
 
         self.batch_size = batch_size
         self.epoch_num = epoch_num
@@ -44,7 +73,8 @@ class Meta_NER_Trainer:
         self.alphabet_size = alphabet_size
         self.char_emb_dim = char_emb_dim
         self.hidden_size = hidden_size
-        self.total_sample_size = total_train_size
+        self.total_train_size = total_train_size
+        self.is_lr_decay = is_lr_decay
 
         # initialize the network components
         self.encoder = CNN_BiGRU(word_size, word_emb_dim, alphabet_size, char_emb_dim, hidden_size,
@@ -54,8 +84,7 @@ class Meta_NER_Trainer:
         self.decoders = {}
         for domain in self.train_domains:
             self.decoders[domain.name] = DomainCRF(hidden_size * 2, domain.tag_num)
-        # initialize the optimizer fixme: check here
-        # todo: add weight decay
+        # initialize the optimizer
         self.encoder_optimizer = optim.Adam([{'params': self.encoder.word_embedding.parameters(),
                                               'lr': word_emb_lr, 'weight_decay': 0},
                                              {'params': self.encoder.conv1.parameters()},
@@ -65,24 +94,33 @@ class Meta_NER_Trainer:
                                              {'params': self.encoder.rnn_layer.parameters()},
                                              {'params': self.encoder.char_embedding.parameters()}
                                              ],
-                                            lr=lr, weight_decay=0)
+                                            lr=lr, weight_decay=weight_decay)
         self.decoder_optimizers = {}
         for domain in self.train_domains:
             self.decoder_optimizers[domain.name] = optim.Adam([{'params': self.decoders[domain.name].parameters()}],
-                                                              lr=lr, weight_decay=0)
+                                                              lr=lr, weight_decay=weight_decay)
         self.discriminator_optimizer = optim.Adam([{'params': self.domain_discriminator.parameters()}],
-                                                  lr=lr, weight_decay=0)
+                                                  lr=lr, weight_decay=weight_decay)
+        # initialize the scheduler
+        if is_lr_decay:
+            self.encoder_scheduler = StepLR(self.encoder_optimizer, step_size=10, gamma=0.98)
+            self.discriminator_scheduler = StepLR(self.discriminator_optimizer, step_size=10, gamma=0.98)
+            self.decoder_schedulers = {}
+            for domain in self.train_domains:
+                self.decoder_schedulers[domain.name] = StepLR(self.decoder_optimizers[domain.name],
+                                                              step_size=10, gamma=0.98)
 
     def train(self):
         """
         The core method of the class
         """
         # to approximate the iterations and epoch index
-        iteration_per_epoch = int(self.total_sample_size / (self.batch_size * len(self.train_domains)))
+        iteration_per_epoch = int(self.total_train_size / (self.batch_size * len(self.train_domains)))
         total_iteration_num = iteration_per_epoch * self.epoch_num
 
         best_train_f1 = 0
         best_dev_f1 = 0
+        lr_decay_epoch_id = 0
 
         for i in range(total_iteration_num):
             # calculate the epoch and iteration id
@@ -95,7 +133,15 @@ class Meta_NER_Trainer:
             # meta-val
             random.shuffle(self.train_domains)
             meta_train_domains = self.train_domains[:-1]
-            meta_val_domain = self.train_domains[-1]
+            meta_val_domain = [self.train_domains[-1]]
+            print("meta-train domains={}; meta-val domains={}".format([x.name for x in meta_train_domains],
+                                                                      [x.name for x in meta_val_domain]))
+
+            # clear the grad at the start of iter
+            self.encoder_optimizer.zero_grad()
+            for domain in self.train_domains:
+                self.decoder_optimizers[domain.name].zero_grad()
+            self.discriminator_optimizer.zero_grad()
 
             meta_pred_loss, meta_adversial_loss = self.meta_train(meta_train_domains)
 
@@ -116,6 +162,8 @@ class Meta_NER_Trainer:
                                              zip(encoder_weights.items(), grad_encoder_old))
             encoder_new_params = OrderedDict((name, param - self.inner_lr * grad) for ((name, param), grad) in
                                              zip(encoder_old_params.items(), grad_encoder_new))
+
+            # outer loop: Meta-validation
             meta_valid_loss = self.meta_validate(encoder_old_params, encoder_new_params, meta_val_domain)
 
             # meta-optimization
@@ -124,7 +172,7 @@ class Meta_NER_Trainer:
                                                             retain_graph=True)
             grads_decode_final = {}
             for domain in meta_train_domains:  # also update the encoder for meta-train domains
-                grads_decode_final[domain.name] = torch.autograd.grad(meta_pred_loss + meta_adversial_loss,
+                grads_decode_final[domain.name] = torch.autograd.grad(meta_pred_loss,
                                                                       decoder_weights[domain.name].values(),
                                                                       retain_graph=True)
             if not isinstance(meta_val_domain, list):
@@ -144,7 +192,7 @@ class Meta_NER_Trainer:
             for initial_param, final_grad in zip(self.domain_discriminator.parameters(), grads_discriminator_final):
                 initial_param.grad = final_grad
 
-            # clip_norm
+            # todo: clip_norm
             self.encoder_optimizer.step()
             for domain in self.train_domains:
                 self.decoder_optimizers[domain.name].step()
@@ -157,14 +205,26 @@ class Meta_NER_Trainer:
                 if f1 > best_train_f1:
                     best_train_f1 = f1
 
-                performance_str, f1 = self.evaluate(meta_val_domain)
+                pred_loss, f1 = self.evaluate(meta_val_domain)
                 print("[meta_test] pred_loss={};f1={}".format(pred_loss, f1))
                 if f1 > best_dev_f1:
                     best_dev_f1 = f1
                     torch.save(self.encoder.state_dict(), MODEL_SAVE_PATH)
                     print("best f1 found (), model is saved to {}".format(best_dev_f1, MODEL_SAVE_PATH))
 
-    def meta_train(self, meta_train_domains):
+            if self.is_lr_decay and (current_epoch > lr_decay_epoch_id):
+                self.encoder_scheduler.step()
+                for domain in self.train_domains:
+                    self.decoder_schedulers[domain.name].step()
+                self.discriminator_scheduler.step()
+                lr_decay_epoch_id = current_epoch
+
+    def meta_train(self, meta_train_domains: []):
+        """
+        learns meta_train_domains
+        :param meta_train_domains: []
+        :return: meta_train_pred_loss, meta_train_loss_adv
+        """
         meta_train_pred_loss = 0.0
         meta_train_loss_adv = 0.0
 
@@ -185,10 +245,16 @@ class Meta_NER_Trainer:
             # accumulate the domain discrimination loss
             adversial_loss = self.domain_discriminator.loss(encoded_feature, domain_tag)
             meta_train_loss_adv += adversial_loss
-
         return meta_train_pred_loss, meta_train_loss_adv
 
     def meta_validate(self, encoder_old_param, encoder_new_param, valid_domains):
+        """
+        computes for the meta validation loss
+        :param encoder_old_param: theta_old in paper
+        :param encoder_new_param: theta_new in paper
+        :param valid_domains: the meta-valid set
+        :return:
+        """
         if not isinstance(valid_domains, list):  # ensure valid_domains are iterable
             valid_domains = [valid_domains]
 
@@ -216,8 +282,7 @@ class Meta_NER_Trainer:
             # get the prediction loss
             encoded_feature_old, _ = old_encoder(word_seq, char_seq)
             decode_loss = self.decoders[current_domain.name].loss(encoded_feature_old, true_tags)
-            meta_valid_pred_loss += decode_loss
-
+            meta_valid_pred_loss += -decode_loss
             # get the domain discrimination loss
             encoded_feature_new, _ = new_encoder(word_seq, char_seq)
             adversiral_loss = self.domain_discriminator.loss(encoded_feature_new, domain_tag)

@@ -63,7 +63,7 @@ class CNN_BiGRU(nn.Module):
 
         # 3. BiGRU
         self.rnn_layer = nn.GRU(input_size=char_emb_dim + word_emb_dim, hidden_size=hidden_size, num_layers=layer_num,
-                                batch_first=True, dropout=dropout, bidirectional=True)
+                                batch_first=True, dropout=0.5, bidirectional=True)
 
     def forward(self, words, characters) -> torch.tensor:
         """
@@ -163,7 +163,7 @@ class DomainCRF(nn.Module):
     def loss(self, encoded_features, true_tags):
         x = self.linear(encoded_features)
         real_entries_mask = true_tags != -1  # to mask out the padding entries
-        x = self.crf(x, true_tags, mask=real_entries_mask)
+        x = self.crf(x, true_tags, mask=real_entries_mask, reduction='mean')
         return x
 
     def decode(self, encoded_features, mask):

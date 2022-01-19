@@ -40,7 +40,7 @@ class Dataset:
         self.read_data()
 
         # update the class attribute
-        domain_id = len(Dataset.char2id)
+        domain_id = len(Dataset.domain2id)
         Dataset.domain2id[domain_name] = domain_id
         Dataset.id2domain[domain_id] = domain_name
 
@@ -83,7 +83,7 @@ class Dataset:
             [[[WORD_ID_SEQ], [CHAR_SEQ],[TAG_SEQUENCE]], [[WORD_ID_SEQ], [CHAR_SEQ],[TAG_SEQUENCE]], ...]
         get the id2tag and tag2id
         """
-        if self.name in ["conll2003", "wnut17", "wikigold"]:
+        if self.name in ["conll2003", "wnut17", "wikigold", "ontonotes"]:
             train_path = os.path.join("data", self.name, "train.txt")
             test_path = os.path.join("data", self.name, "test.txt")
             valid_path = os.path.join("data", self.name, "valid.txt")
@@ -102,7 +102,8 @@ class Dataset:
         char_seq = []
         tag_seq = []
         cache_path = str(file_path[:-3]) + "pkl"
-        is_cached = pathlib.Path(cache_path).exists()
+        # is_cached = pathlib.Path(cache_path).exists()
+        is_cached = False
 
         if is_cached:
             print("Loading {}".format(cache_path))
