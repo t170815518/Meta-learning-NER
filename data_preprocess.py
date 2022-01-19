@@ -1,11 +1,8 @@
-import numpy as np
+import os
 import pickle
+from random import shuffle
 
-from gensim.models import KeyedVectors
-from gensim.test.utils import datapath
-from gensim.scripts.word2vec2tensor import word2vec2tensor
-from gensim.scripts.glove2word2vec import glove2word2vec
-
+import numpy as np
 
 BUFFER_SIZE = 10000000
 
@@ -47,5 +44,46 @@ def preprocess_word2vec(emb_path):
         pickle.dump(id2word, f)
 
 
+def split_dataset(directory, file_path):
+    sentences = []
+    sentence = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip().split()
+            if len(line) < 2:
+                sentences.append(sentence)
+                sentence = []
+            else:
+                if len(line) == 2:
+                    word, tag = line
+                sentence.append([word, tag])
+    shuffle(sentences)
+    train_size = int(len(sentences) * 0.6)
+    test_size = int(len(sentences) * 0.2)
+
+    train_data = sentences[:train_size]
+    test_data = sentences[train_size:train_size + test_size]
+    val_data = sentences[train_size + test_size:]
+
+    with open(os.path.join(directory, "train.txt"), "w+") as f:
+        for sentence in train_data:
+            for word, tag in sentence:
+                f.write("{}\t{}\n".format(word, tag))
+            f.write('\n')
+
+    with open(os.path.join(directory, "test.txt"), "w+") as f:
+        for sentence in test_data:
+            for word, tag in sentence:
+                f.write("{}\t{}\n".format(word, tag))
+            f.write('\n')
+
+    with open(os.path.join(directory, "valid.txt"), "w+") as f:
+        for sentence in val_data:
+            for word, tag in sentence:
+                f.write("{}\t{}\n".format(word, tag))
+            f.write('\n')
+
+
 if __name__ == '__main__':
-    preprocess_word2vec("glove.6B.300d.txt")
+    # preprocess_word2vec("glove.6B.300d.txt")
+    split_dataset("data/wikigold", "data/wikigold/wikigold.conll.txt")
