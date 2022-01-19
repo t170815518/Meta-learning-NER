@@ -75,6 +75,8 @@ class Dataset:
         padded_char_seq = padded_char_seq.to(self.device)
         tag_seq = tag_seq.to(self.device)
         domain_tag = domain_tag.to(self.device)
+        if padded_char_seq.size()[-1] < 5:
+            logging.info("there is batch with char_seq less than 5")
 
         return (word_seq, padded_char_seq), tag_seq, domain_tag
 

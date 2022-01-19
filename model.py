@@ -168,6 +168,13 @@ class DomainCRF(nn.Module):
         self.crf = CRF(tag_num, batch_first=True)
 
     def loss(self, encoded_features, true_tags):
+        """
+
+        :param encoded_features:
+        :param true_tags:
+        :return: the returned value is the log likelihood so you’ll need to make this value negative
+        as the loss to optimize
+        """
         x = self.linear(encoded_features)
         real_entries_mask = true_tags != -1  # to mask out the padding entries
         x = self.crf(x, true_tags, mask=real_entries_mask, reduction='mean')

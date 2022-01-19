@@ -9,6 +9,7 @@ import pickle
 import random
 import numpy as np
 import torch
+import sys
 import datetime
 
 from Dataset import Dataset
@@ -41,8 +42,20 @@ random.seed(args.random_seed)
 torch.manual_seed(args.random_seed)
 np.random.seed(args.random_seed)
 
-# setup logger fixme: also add the stdout
-logging.basicConfig(filename='train_log_{}.log'.format(datetime.datetime.now()), level=logging.INFO)
+# setup logger
+logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+rootLogger = logging.getLogger()
+rootLogger.setLevel(logging.DEBUG)
+
+fileHandler = logging.FileHandler("train_{}.log".format(datetime.datetime.now()))
+fileHandler.setFormatter(logFormatter)
+rootLogger.addHandler(fileHandler)
+
+consoleHandler = logging.StreamHandler(sys.stdout)
+consoleHandler.setFormatter(logFormatter)
+rootLogger.addHandler(consoleHandler)
+
+logging.info(args)
 
 
 word2id = None

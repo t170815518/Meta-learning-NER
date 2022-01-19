@@ -1,5 +1,6 @@
 import logging
 import random
+import datetime
 from collections import OrderedDict
 
 import torch
@@ -117,6 +118,8 @@ class Meta_NER_Trainer:
         """
         The core method of the class
         """
+        logging.info("start training {}".format(datetime.datetime.now()))
+
         # to approximate the iterations and epoch index
         iteration_per_epoch = int(self.total_train_size / (self.batch_size * len(self.train_domains)))
         total_iteration_num = iteration_per_epoch * self.epoch_num
@@ -158,7 +161,7 @@ class Meta_NER_Trainer:
             domain_discriminator_weights = OrderedDict((name, param) for (name, param)
                                                        in self.domain_discriminator.named_parameters())
             # take the derivative
-            grad_encoder_old = torch.autograd.grad(-meta_pred_loss, encoder_weights.values(), retain_graph=True)
+            grad_encoder_old = torch.autograd.grad(meta_pred_loss, encoder_weights.values(), retain_graph=True)
             grad_encoder_new = torch.autograd.grad(meta_adversial_loss, encoder_weights.values(), retain_graph=True)
             # update the model with different derivatives
             encoder_old_params = OrderedDict((name, param - self.inner_lr * grad) for ((name, param), grad) in
@@ -184,6 +187,7 @@ class Meta_NER_Trainer:
                 grads_decode_final[domain.name] = torch.autograd.grad(meta_valid_loss,
                                                                       decoder_weights[domain.name].values(),
                                                                       retain_graph=True)
+
             for initial_param, final_grad in zip(self.encoder.parameters(), grads_encoder_final):
                 initial_param.grad = final_grad
 
@@ -203,19 +207,20 @@ class Meta_NER_Trainer:
 
             # check-point
             if i % self.eval_interval == 0 and i != 0:
-                pred_loss, f1 = self.evaluate(meta_train_domains)
+                pred_loss, f1 = self.evaluate(meta_train_domains, eval_type="train")
                 logging.info("[meta_train] pred_loss={};f1={}".format(pred_loss, f1))
                 if f1 > best_train_f1:
                     best_train_f1 = f1
 
-                pred_loss, f1 = self.evaluate(meta_val_domain)
+                pred_loss, f1 = self.evaluate(meta_val_domain, eval_type="valid")
                 logging.info("[meta_test] pred_loss={};f1={}".format(pred_loss, f1))
                 if f1 > best_dev_f1:
                     best_dev_f1 = f1
                     torch.save(self.encoder.state_dict(), MODEL_SAVE_PATH)
                     logging.info("best f1 found (), model is saved to {}".format(best_dev_f1, MODEL_SAVE_PATH))
 
-            if self.is_lr_decay and (current_epoch > lr_decay_epoch_id):
+            if self.is_lr_decay and (current_epoch != lr_decay_epoch_id):
+                logging.info("scheduler step")
                 self.encoder_scheduler.step()
                 for domain in self.train_domains:
                     self.decoder_schedulers[domain.name].step()
@@ -242,7 +247,7 @@ class Meta_NER_Trainer:
 
             # accumulate the prediction loss
             encoded_feature, _ = self.encoder(word_seq, char_seq)
-            decode_loss = self.decoders[current_domain.name].loss(encoded_feature, true_tags)
+            decode_loss = -self.decoders[current_domain.name].loss(encoded_feature, true_tags)
             meta_train_pred_loss += decode_loss
 
             # accumulate the domain discrimination loss
@@ -286,8 +291,8 @@ class Meta_NER_Trainer:
 
             # get the prediction loss
             encoded_feature_old, _ = old_encoder(word_seq, char_seq)
-            decode_loss = self.decoders[current_domain.name].loss(encoded_feature_old, true_tags)
-            meta_valid_pred_loss += -decode_loss
+            decode_loss = -self.decoders[current_domain.name].loss(encoded_feature_old, true_tags)
+            meta_valid_pred_loss += decode_loss
             # get the domain discrimination loss
             encoded_feature_new, _ = new_encoder(word_seq, char_seq)
             adversiral_loss = self.domain_discriminator.loss(encoded_feature_new, domain_tag)
@@ -296,7 +301,7 @@ class Meta_NER_Trainer:
         meta_valid_loss = meta_valid_pred_loss + meta_valid_loss_adv
         return meta_valid_loss
 
-    def evaluate(self, domains):
+    def evaluate(self, domains, eval_type: str = "valid"):
         """
         evaluates the model performance in the domains (valid dataset)
         :param domains:
@@ -310,30 +315,38 @@ class Meta_NER_Trainer:
         # start evaluation
         with torch.no_grad():
             pred_loss = 0  # total loss
-            total_sample_num = 0
+            total_batch_num = 0
             gold_label = []
             prediction = []
 
             for domain in domains:
                 logging.info("Evaluating valid set of {}".format(domain.name))
+                if eval_type == "valid":
+                    data = domain.valid
+                elif eval_type == "train":
+                    data = random.sample(domain.train, 500)  # to save eval time
 
-                for start_id in range(0, len(domain.valid), self.batch_size):
-                    end_id = min(start_id + self.batch_size, len(domain.valid))
-                    selected_data = domain.valid[start_id: end_id]
-                    total_sample_num += len(selected_data)
+                for start_id in range(0, len(data), self.batch_size):
+                    total_batch_num += 1
+                    end_id = min(start_id + self.batch_size, len(data))
+                    selected_data = data[start_id: end_id]
                     (word_seq, char_seq), true_tags, domain_tag = domain.process_data(selected_data)
 
                     feature, _ = self.encoder(word_seq, char_seq)
 
                     # get the training loss
-                    score = self.decoders[domain.name].loss(feature, true_tags)
-                    pred_loss += -score.item()
+                    score = -self.decoders[domain.name].loss(feature, true_tags)
+                    pred_loss += score.item()
                     # get the prediction fixme: check
                     unpad_true_tag = [tag for sentence in true_tags.tolist() for tag in sentence if tag != -1]
-                    gold_label.extend(unpad_true_tag)
                     real_entries_mask = true_tags != -1
                     pred_tag = self.decoders[domain.name].decode(feature, mask=real_entries_mask)
-                    prediction.extend([x for y in pred_tag for x in y])
-            pred_loss = pred_loss / total_sample_num
+                    pred_tag = [x for y in pred_tag for x in y]  # unpack
+
+                    assert len(pred_tag) == len(unpad_true_tag)
+                    gold_label.extend(unpad_true_tag)
+                    prediction.extend(pred_tag)
+
+            pred_loss = pred_loss / total_batch_num
             f1 = f1_score(gold_label, prediction, average='macro')
         return pred_loss, f1
