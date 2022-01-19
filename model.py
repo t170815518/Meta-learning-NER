@@ -123,10 +123,10 @@ class MLP_DomainDiscriminator(nn.Module):
     MLP-based network as the domain discriminator
     """
 
-    def __init__(self, feature_dim: int, domain_num: int):
+    def __init__(self, feature_dim: int, domain_num: int, device):
         super(MLP_DomainDiscriminator, self).__init__()
-        self.attention = torch.zeros((feature_dim, 1), requires_grad=True)
-        self.linear = nn.Linear(feature_dim, domain_num)
+        self.attention = torch.zeros((feature_dim, 1), requires_grad=True, device=device)
+        self.linear = nn.Linear(feature_dim, domain_num).to(device)
 
         self.constant = -1  # the constant multiplied to gradient during gradient reverse operation
         # initialize weights

@@ -75,15 +75,17 @@ class Meta_NER_Trainer:
         self.hidden_size = hidden_size
         self.total_train_size = total_train_size
         self.is_lr_decay = is_lr_decay
+        self.device = device
 
         # initialize the network components
         self.encoder = CNN_BiGRU(word_size, word_emb_dim, alphabet_size, char_emb_dim, hidden_size,
                                  word_pad_idx=word_size, char_pad_idx=alphabet_size, is_freeze=False, cnn_total_num=100,
-                                 dropout=0.2, pretrained_path="pre_trained.pt")
-        self.domain_discriminator = MLP_DomainDiscriminator(hidden_size * 2, len(train_domains))
+                                 dropout=0.2, pretrained_path="pre_trained.pt").to(device)
+        self.domain_discriminator = MLP_DomainDiscriminator(hidden_size * 2, len(train_domains), self.device).to(device)
         self.decoders = {}
         for domain in self.train_domains:
-            self.decoders[domain.name] = DomainCRF(hidden_size * 2, domain.tag_num)
+            self.decoders[domain.name] = DomainCRF(hidden_size * 2, domain.tag_num).to(device)
+
         # initialize the optimizer
         self.encoder_optimizer = optim.Adam([{'params': self.encoder.word_embedding.parameters(),
                                               'lr': word_emb_lr, 'weight_decay': 0},
@@ -265,11 +267,13 @@ class Meta_NER_Trainer:
         # two encoders are temporary models
         new_encoder = CNN_BiGRU(self.word_size, self.word_emb_dim, self.alphabet_size, self.char_emb_dim,
                                 self.hidden_size, word_pad_idx=self.word_size, char_pad_idx=self.alphabet_size,
-                                is_freeze=False, cnn_total_num=100, dropout=0.2, pretrained_path="pre_trained.pt")
+                                is_freeze=False, cnn_total_num=100, dropout=0.2, pretrained_path="pre_trained.pt")\
+            .to(self.device)
         new_encoder.load_state_dict(encoder_new_param)
         old_encoder = CNN_BiGRU(self.word_size, self.word_emb_dim, self.alphabet_size, self.char_emb_dim,
                                 self.hidden_size, word_pad_idx=self.word_size, char_pad_idx=self.alphabet_size,
-                                is_freeze=False, cnn_total_num=100, dropout=0.2, pretrained_path="pre_trained.pt")
+                                is_freeze=False, cnn_total_num=100, dropout=0.2, pretrained_path="pre_trained.pt").to(
+            self.device)
         old_encoder.load_state_dict(encoder_old_param)
 
         new_encoder.train()

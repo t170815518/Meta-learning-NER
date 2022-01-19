@@ -70,10 +70,10 @@ class Dataset:
 
         domain_tag = torch.LongTensor([Dataset.domain2id[self.name]] * len(data_batch))
         # send to cuda
-        word_seq.to(self.device)
-        padded_char_seq.to(self.device)
-        tag_seq.to(self.device)
-        domain_tag.to(self.device)
+        word_seq = word_seq.to(self.device)
+        padded_char_seq = padded_char_seq.to(self.device)
+        tag_seq = tag_seq.to(self.device)
+        domain_tag = domain_tag.to(self.device)
 
         return (word_seq, padded_char_seq), tag_seq, domain_tag
 

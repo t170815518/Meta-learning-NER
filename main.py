@@ -14,7 +14,7 @@ from meta_NER_algorithm import Meta_NER_Trainer
 
 
 TRAIN_DOMAIN_NAMES = ["conll2003", "wikigold", "wnut17", "ontonotes"]
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda")
 # fixme: remember to change the magic numbers when the train domains change
 CORPUS_SIZE = 400000
 ALPHABET_SIZE = 269
