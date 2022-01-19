@@ -9,7 +9,7 @@ from torch import optim
 from torch.optim.lr_scheduler import StepLR
 
 from model import CNN_BiGRU, MLP_DomainDiscriminator, DomainCRF
-
+from Dataset import Dataset
 
 MODEL_SAVE_PATH = "optimal_encoder.pt"
 
@@ -306,6 +306,7 @@ class Meta_NER_Trainer:
         evaluates the model performance in the domains (valid dataset)
         :param domains:
         :return: average pred_loss, macro f1
+        todo: fix the bug of multiple domains
         """
         # make the models into eval state
         self.encoder.eval()
@@ -350,3 +351,101 @@ class Meta_NER_Trainer:
             pred_loss = pred_loss / total_batch_num
             f1 = f1_score(gold_label, prediction, average='macro')
         return pred_loss, f1
+
+
+class Meta_NER_Evaluator:
+    """
+    evaluates the model with good initialization on the test domain
+    Important attribute:
+        - self.encoder: the parameter of the which is initialized with the optimal parameter during meta-NER training,
+        CNN-BiGRU model by default
+        - self.decoder: the newly instantiated one for the test domain
+    """
+
+    def __init__(self, test_domain: Dataset, word_size, word_emb_dim, alphabet_size, char_emb_dim, hidden_size,
+                 device: torch.device, batch_size, is_fine_tune: bool, epoch_num: int, eval_interval: int):
+        """
+        :param test_domain:
+        """
+        self.eval_interval = eval_interval
+        self.test_domain: Dataset = test_domain
+        self.encoder = CNN_BiGRU(word_size, word_emb_dim, alphabet_size, char_emb_dim, hidden_size,
+                                 word_pad_idx=word_size, char_pad_idx=alphabet_size, is_freeze=False, cnn_total_num=100,
+                                 dropout=0.2, pretrained_path="pre_trained.pt").to(device)
+        self.decoder = DomainCRF(hidden_size*2, test_domain.tag_num)
+        self.device = device
+        self.batch_size: int = batch_size
+        self.is_fine_tune = is_fine_tune
+        self.epoch_num: int = epoch_num
+
+    def evaluate(self):
+        """the entry method, the classification report would be print out"""
+        optimizer = optim.Adam([{'params': self.encoder.word_embedding.parameters(), 'lr': 1e-4, 'weight_decay': 0},
+                                {'params': self.encoder.conv1.parameters()},
+                                {'params': self.encoder.conv2.parameters()},
+                                {'params': self.encoder.conv3.parameters()},
+                                {'params': self.encoder.conv4.parameters()},
+                                {'params': self.encoder.rnn_layer.parameters()},
+                                {'params': self.encoder.char_embedding.parameters()},
+                                {'params': self.decoder.parameters()}], lr=1e-3, weight_decay=1e-6)
+        iter_counter = 0
+        best_f1 = 0
+
+        for i in range(self.epoch_num):
+            self.encoder.train()
+            self.decoder.train()
+
+            for (word_seq, char_seq), true_tags, domain_tag in self.test_domain.iter_train():
+                encoder_features, _ = self.encoder(word_seq, char_seq)
+                pred_loss = -self.decoder.loss(encoder_features, true_tags)
+
+                optimizer.zero_grad()
+                pred_loss.backward()
+                optimizer.step()
+
+                iter_counter += 1
+                if iter_counter % self.eval_interval == 0:
+                    pred_loss, f1 = self.__get_performance_metric()
+                    logging.info("test_loss={};test_f1={}".format(pred_loss, f1))
+                    if f1 > best_f1:
+                        best_f1 = f1
+                        logging.info("Best f1 found, f1={}".format(best_f1))
+
+    def __get_performance_metric(self) -> float:
+        self.encoder.eval()
+        self.decoder.eval()
+
+        # start evaluation
+        with torch.no_grad():
+            pred_loss = 0  # total loss
+            total_batch_num = 0
+            gold_label = []
+            prediction = []
+
+            logging.info("start evaluation")
+
+            data = self.test_domain.test
+            for start_id in range(0, len(data), self.batch_size):
+                total_batch_num += 1
+                end_id = min(start_id + self.batch_size, len(data))
+                selected_data = data[start_id: end_id]
+                (word_seq, char_seq), true_tags, domain_tag = self.test_domain.process_data(selected_data)
+
+                feature, _ = self.encoder(word_seq, char_seq)
+
+                # get the training loss
+                score = -self.decoder.loss(feature, true_tags)
+                pred_loss += score.item()
+                # get the prediction
+                unpad_true_tag = [tag for sentence in true_tags.tolist() for tag in sentence if tag != -1]
+                real_entries_mask = true_tags != -1
+                pred_tag = self.decoder.decode(feature, mask=real_entries_mask)
+                pred_tag = [x for y in pred_tag for x in y]  # unpack
+
+                assert len(pred_tag) == len(unpad_true_tag)
+                gold_label.extend(unpad_true_tag)
+                prediction.extend(pred_tag)
+
+            pred_loss = pred_loss / total_batch_num
+            f1 = f1_score(gold_label, prediction, average='macro')
+            return pred_loss, f1
