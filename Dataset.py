@@ -11,7 +11,7 @@ import random
 
 # todo: remove the magic number
 CORPUS_SIZE = 400000
-ALPHABET_SIZE = 249
+ALPHABET_SIZE = 269
 
 
 class Dataset:
@@ -24,7 +24,9 @@ class Dataset:
     id2char = {}
     encountered_chars = set()
 
-    def __init__(self, domain_name: str, word2id: {}, id2word: {}, device, char2id: {} = None):
+    def __init__(self, domain_name: str, word2id: {}, id2word: {}, device, char2id: {} = None,
+                 is_update_char2id: bool = True):
+        self.is_update_char2id = is_update_char2id
         self.device = device
         self.id2word = id2word
         self.word2id = word2id
@@ -91,18 +93,15 @@ class Dataset:
             [[[WORD_ID_SEQ], [CHAR_SEQ],[TAG_SEQUENCE]], [[WORD_ID_SEQ], [CHAR_SEQ],[TAG_SEQUENCE]], ...]
         get the id2tag and tag2id
         """
-        if self.name in ["conll2003", "wnut17", "wikigold", "ontonotes", "bio_nlp_13_pc"]:
-            train_path = os.path.join("data", self.name, "train.txt")
-            test_path = os.path.join("data", self.name, "test.txt")
-            valid_path = os.path.join("data", self.name, "valid.txt")
-            self.train = self.__read_file(train_path)
-            self.test = self.__read_file(test_path)
-            self.valid = self.__read_file(valid_path)
-            # update class attributes
-            self.tag_num = len(set([tag for sentence in self.train for tag in sentence[2]]))
-            Dataset.total_train_sample_size += len(self.train)
-        else:
-            raise ValueError("{}: unsupported dataset".format(self.name))
+        train_path = os.path.join("data", self.name, "train.txt")
+        test_path = os.path.join("data", self.name, "test.txt")
+        valid_path = os.path.join("data", self.name, "valid.txt")
+        self.train = self.__read_file(train_path)
+        self.test = self.__read_file(test_path)
+        self.valid = self.__read_file(valid_path)
+        # update class attributes
+        self.tag_num = len(self.tag2id)
+        Dataset.total_train_sample_size += len(self.train)
 
     def __read_file(self, file_path):
         data = []
@@ -149,12 +148,18 @@ class Dataset:
 
                         chars = []
                         for char in word:
-                            if char not in Dataset.encountered_chars:
-                                new_id = len(Dataset.char2id)
-                                Dataset.char2id[char] = new_id
-                                Dataset.id2char[new_id] = char
-                                Dataset.encountered_chars.add(char)
-                            chars.append(self.char2id[char])
+                            if self.is_update_char2id:
+                                if char not in Dataset.encountered_chars:
+                                    new_id = len(Dataset.char2id)
+                                    Dataset.char2id[char] = new_id
+                                    Dataset.id2char[new_id] = char
+                                    Dataset.encountered_chars.add(char)
+                                chars.append(self.char2id[char])
+                            else:  # for test domain
+                                if char not in Dataset.encountered_chars:
+                                    chars.append(ALPHABET_SIZE)  # omit the new char
+                                else:
+                                    chars.append(self.char2id[char])
 
                         word_seq.append(word_id)
                         tag_seq.append(tag)
