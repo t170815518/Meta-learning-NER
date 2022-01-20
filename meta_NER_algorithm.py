@@ -8,7 +8,7 @@ from sklearn.metrics import f1_score
 from torch import optim
 from torch.optim.lr_scheduler import StepLR
 
-from model import CNN_BiGRU, MLP_DomainDiscriminator, DomainCRF
+from model import CNN_BiGRU, MLP_DomainDiscriminator, Decoder
 from Dataset import Dataset
 
 MODEL_SAVE_PATH = "optimal_encoder.pt"
@@ -31,7 +31,7 @@ class Meta_NER_Trainer:
     def __init__(self, batch_size: int, train_domains: [], device: torch.device, word_size: int, word_emb_dim: int,
                  alphabet_size: int, char_emb_dim: int, hidden_size: int, lr: float, word_emb_lr: float,
                  weight_decay: float, is_lr_decay: bool, total_train_size: int, epoch_num: int, inner_lr: float,
-                 eval_interval: int):
+                 eval_interval: int, is_use_crf: bool):
         """
 
         :param batch_size: int
@@ -86,7 +86,7 @@ class Meta_NER_Trainer:
         self.domain_discriminator = MLP_DomainDiscriminator(hidden_size * 2, len(train_domains), self.device).to(device)
         self.decoders = {}
         for domain in self.train_domains:
-            self.decoders[domain.name] = DomainCRF(hidden_size * 2, domain.tag_num).to(device)
+            self.decoders[domain.name] = Decoder(hidden_size * 2, domain.tag_num, is_use_crf).to(device)
 
         # initialize the optimizer
         self.encoder_optimizer = optim.Adam([{'params': self.encoder.word_embedding.parameters(),
@@ -247,7 +247,7 @@ class Meta_NER_Trainer:
 
             # accumulate the prediction loss
             encoded_feature, _ = self.encoder(word_seq, char_seq)
-            decode_loss = -self.decoders[current_domain.name].loss(encoded_feature, true_tags)
+            decode_loss = self.decoders[current_domain.name].loss(encoded_feature, true_tags)
             meta_train_pred_loss += decode_loss
 
             # accumulate the domain discrimination loss
@@ -291,7 +291,7 @@ class Meta_NER_Trainer:
 
             # get the prediction loss
             encoded_feature_old, _ = old_encoder(word_seq, char_seq)
-            decode_loss = -self.decoders[current_domain.name].loss(encoded_feature_old, true_tags)
+            decode_loss = self.decoders[current_domain.name].loss(encoded_feature_old, true_tags)
             meta_valid_pred_loss += decode_loss
             # get the domain discrimination loss
             encoded_feature_new, _ = new_encoder(word_seq, char_seq)
@@ -364,7 +364,7 @@ class Meta_NER_Evaluator:
 
     def __init__(self, test_domain: Dataset, word_size, word_emb_dim, alphabet_size, char_emb_dim, hidden_size,
                  device: torch.device, batch_size, is_fine_tune: bool, epoch_num: int, eval_interval: int,
-                 encoder_param_path: str):
+                 encoder_param_path: str, is_use_crf: bool):
         """
         :param test_domain:
         """
@@ -374,7 +374,7 @@ class Meta_NER_Evaluator:
                                  word_pad_idx=word_size, char_pad_idx=alphabet_size, is_freeze=False, cnn_total_num=100,
                                  dropout=0.2, pretrained_path="pre_trained.pt").to(device)
         self.encoder.load_state_dict(torch.load(encoder_param_path))
-        self.decoder = DomainCRF(hidden_size*2, test_domain.tag_num).to(device)
+        self.decoder = Decoder(hidden_size * 2, test_domain.tag_num, is_use_crf).to(device)
         self.device = device
         self.batch_size: int = batch_size
         self.is_fine_tune = is_fine_tune

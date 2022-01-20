@@ -35,6 +35,7 @@ parser.add_argument('--word_emb_lr', type=float, default=1e-4)
 parser.add_argument('--word_emb_dim', type=int, default=300)
 parser.add_argument('--char_emb_dim', type=int, default=100)
 parser.add_argument('--hidden_size', type=int, default=128)
+parser.add_argument('--is_use_crf', type=bool, default=False)
 # for test
 parser.add_argument('--test_domain', type=str, default="bio_nlp_13_pc")
 args = parser.parse_args()
@@ -79,18 +80,18 @@ if args.mode == "train":
                                char_emb_dim=args.char_emb_dim, lr=args.lr, word_emb_lr=args.word_emb_lr,
                                weight_decay=args.weight_decay, is_lr_decay=True,
                                total_train_size=Dataset.total_train_sample_size, epoch_num=args.epoch_num,
-                               inner_lr=args.inner_lr, eval_interval=args.eval_interval, hidden_size=args.hidden_size)
+                               inner_lr=args.inner_lr, eval_interval=args.eval_interval, hidden_size=args.hidden_size,
+                               is_use_crf=args.is_use_crf)
     trainer.train()
 else:
     char2id = None
     with open("char2id.pkl", "rb") as f:
         char2id = pickle.load(f)
 
-    test_domain = Dataset(args.test_domain, word2id, id2word, DEVICE, char2id=char2id)
-    ALPHABET_SIZE = len(Dataset.char2id)
+    test_domain = Dataset(args.test_domain, word2id, id2word, DEVICE, char2id=char2id, is_update_char2id=False)
     evaluator = Meta_NER_Evaluator(test_domain=test_domain, word_size=CORPUS_SIZE, word_emb_dim=args.word_emb_dim,
                                    alphabet_size=ALPHABET_SIZE, char_emb_dim=args.char_emb_dim,
                                    hidden_size=args.hidden_size, device=DEVICE, batch_size=args.batch_size,
                                    is_fine_tune=True, epoch_num=args.epoch_num, eval_interval=args.eval_interval,
-                                   encoder_param_path="optimal_encoder.pt")
+                                   encoder_param_path="optimal_encoder.pt", is_use_crf=args.is_use_crf)
     evaluator.evaluate()

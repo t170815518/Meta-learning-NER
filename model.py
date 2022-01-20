@@ -160,12 +160,17 @@ class MLP_DomainDiscriminator(nn.Module):
         return l
 
 
-class DomainCRF(nn.Module):
-    def __init__(self, feature_dim: int, tag_num):
-        super(DomainCRF, self).__init__()
+class Decoder(nn.Module):
+    def __init__(self, feature_dim: int, tag_num, is_use_crf: bool = True):
+        super(Decoder, self).__init__()
 
+        self.is_use_crf = is_use_crf
+        self.tag_num = tag_num
         self.linear = nn.Linear(feature_dim, tag_num)
-        self.crf = CRF(tag_num, batch_first=True)
+        if is_use_crf:
+            self.crf = CRF(tag_num, batch_first=True)
+
+        self.cross_entropy_loss = nn.CrossEntropyLoss()
 
     def loss(self, encoded_features, true_tags):
         """
@@ -175,12 +180,39 @@ class DomainCRF(nn.Module):
         :return: the returned value is the log likelihood so you’ll need to make this value negative
         as the loss to optimize
         """
-        x = self.linear(encoded_features)
+        x = self.linear(encoded_features)  # [BATCH, SEQ_LEN, TAG_NUM]
         real_entries_mask = true_tags != -1  # to mask out the padding entries
-        x = self.crf(x, true_tags, mask=real_entries_mask, reduction='mean')
-        return x
+        if self.is_use_crf:
+            l = -self.crf(x, true_tags, mask=real_entries_mask, reduction='mean')
+        else:
+            x = x.view(-1, self.tag_num)
+            real_entries_mask = real_entries_mask.view(-1)
+            true_tags = true_tags.view(-1)
+            x = x[real_entries_mask]
+            true_tags = true_tags[real_entries_mask]
+            l = self.cross_entropy_loss(x, true_tags)
+        return l
 
     def decode(self, encoded_features, mask):
+        """
+
+        :param encoded_features:
+        :param mask:
+        :return: list of list
+        """
         x = self.linear(encoded_features)
-        tag = self.crf.decode(x, mask=mask)
+        if self.is_use_crf:
+            tag = self.crf.decode(x, mask=mask)
+        else:
+            tag = []
+            pred_tag = torch.argmax(x, dim=-1)
+            batch_size, seq_max_len = pred_tag.size()
+            for i in range(batch_size):
+                t = []
+                for j in range(seq_max_len):
+                    if mask[i, j]:
+                        t.append(int(pred_tag[i, j]))
+                    else:
+                        break
+                tag.append(t)
         return tag
