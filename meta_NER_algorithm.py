@@ -336,7 +336,7 @@ class Meta_NER_Trainer:
                     feature, _ = self.encoder(word_seq, char_seq)
 
                     # get the training loss
-                    score = -self.decoders[domain.name].loss(feature, true_tags)
+                    score = self.decoders[domain.name].loss(feature, true_tags)
                     pred_loss += score.item()
                     # get the prediction fixme: check
                     unpad_true_tag = [tag for sentence in true_tags.tolist() for tag in sentence if tag != -1]
@@ -401,7 +401,7 @@ class Meta_NER_Evaluator:
                 self.decoder.train()
 
                 encoder_features, _ = self.encoder(word_seq, char_seq)
-                pred_loss = -self.decoder.loss(encoder_features, true_tags)
+                pred_loss = self.decoder.loss(encoder_features, true_tags)
 
                 optimizer.zero_grad()
                 pred_loss.backward()
@@ -438,7 +438,7 @@ class Meta_NER_Evaluator:
                 feature, _ = self.encoder(word_seq, char_seq)
 
                 # get the training loss
-                score = -self.decoder.loss(feature, true_tags)
+                score = self.decoder.loss(feature, true_tags)
                 pred_loss += score.item()
                 # get the prediction
                 unpad_true_tag = [tag for sentence in true_tags.tolist() for tag in sentence if tag != -1]
